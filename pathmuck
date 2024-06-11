@@ -1,0 +1,136 @@
+#!/bin/bash
+
+# Muck with your path!
+# Mucho boogs! No guarantees!
+# jacktose 2024-06
+
+#orig_path="$PATH"
+#printf '%s\n%s%s\n\n' "To restore PATH to this point, copy & paste:" "PATH=" "$PATH"
+
+byebye=false
+declare -a P
+
+split () {
+    local IFS=:
+    set -f  # Disable glob-expansion
+    P=( $@ )
+    set +f  # Re-enable glob-expansion
+    #printf '%s ' "${P[@]}"
+}
+
+print_path () {
+    local IFS=:
+    shift
+    printf '%s\n' "${P[*]}"
+}
+
+add_before () {
+    local new
+    read -p "Path to insert before #${1}:"$'\n' new
+    insert_at $1 "$new"
+}
+
+add_after () {
+    local new
+    read -p "Path to insert after #${1}:"$'\n' new
+    insert_at $(($1 + 1)) "$new"
+}
+
+#duplicate () {
+#    insert_at $1 "${P[$1]}"
+#}
+
+insert_at () {
+    P=("${P[@]:0:$1}" "$2" "${P[@]:$1}")
+}
+
+#replace () {
+#    local new
+#    read -p "Path to replace #${1}:"$'\n' new
+#    P[$1]="$new"
+#}
+
+edit () {
+    local new
+    read -rei "${P[$1]}" new
+    P[$1]="$new"
+}
+
+delete () {
+    #unset P[$1]  # Leaves array sparse
+    P=("${P[@]:0:$1}" "${P[@]:$1+1}")
+}
+
+move () {
+    local oldi=$1
+    local newi
+    read -rp $'Move above which #?\n' newi
+    printf '\033[1A%s\t%s\n' "$newi" "${P[$newi]}"
+    newi=$(( newi > ${#P[@]} ? ${#P[@]} : newi ))  # max
+    insert_at $newi "${P[$oldi]}"
+    delete $(( newi > $oldi ? $oldi : $oldi+1 ))
+
+    #if [ $newi -eq $oldi ]; then
+    #    ;
+    #elif [ $newi -gt $oldi ]; then
+    #    P=("${P[@]:0:oldi}" "${P[@]:oldi+1:newi-oldi-1}" "${P[$oldi]}" "${P[@]:newi}")
+    #elif [ $newi -lt $oldi ]; then
+    #    P=("${P[@]:0:newi}" "${P[$oldi]}" "${P[@]:newi:oldi-newi}" "${P[@]:oldi+1}")
+    #fi
+}
+
+#declare -a actions
+actions=('add before' 'add after' 'edit' 'delete' 'move' 'cancel' 'exit')
+
+split "$PATH"
+
+while [ ! "$byebye" = true ]; do
+    # Select entry
+    printf '%s\n' "PATH directories:"
+    for i in "${!P[@]}"; do
+        printf '%s\t%s\n' "$i" "${P[$i]}"
+    done
+    unset pi
+    while [ -z $pi ] || [ -z "${P[$pi]:+x}" ]; do
+        read -p $'Select entry:\n' pi
+    done
+    printf '\033[1A%s\t%s\n' "$pi" "${P[$pi]}"
+
+    # Select action
+    printf '%s\n' "Select action:"
+    for i in "${!actions[@]}"; do
+        printf '%s %s\t' "$i" "${actions[$i]}"
+    done
+    read -p $'\n' ai
+    printf '\033[1A%s %s\n' "$ai" "${actions[$ai]:-invalid}"
+
+    # Take action
+    case "${actions[$ai]:-invalid}" in
+        'add before') add_before $pi ;;
+        'add after' ) add_after  $pi ;;
+        #'duplicate' ) duplicate  $pi ;;
+        #'replace'   ) replace    $pi ;;
+        'edit'      ) edit       $pi ;;
+        'delete'    ) delete     $pi ;;
+        'move'      ) move       $pi ;;
+        'exit'      ) byebye=true ;;
+        'cancel'|'invalid'|* ) printf '%s\n' "Try again" ;;
+    esac
+    printf '\n'
+done
+
+# Finish up
+# Unchanged:
+new_path="$(print_path)"
+if [ "$new_path" = "$PATH" ]; then
+    printf '%s\n%s\n' "No change. PATH remains:" "$PATH"
+    exit 0
+fi
+# Changed:
+#printf '%s\n%s\n' "Old path:" "$PATH"
+#printf '%s\n%s\n' "New path:" "$new_path"
+printf '%s\n' "To effect your changes, paste this into your shell:"
+printf '%s\n' "(To make them persistent, paste it into your .profile, .bashrc, or similar.)" 
+printf '\n%s%s\n' 'export PATH=' "$new_path"
+
+exit 0
